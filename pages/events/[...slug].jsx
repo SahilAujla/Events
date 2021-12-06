@@ -1,13 +1,59 @@
-import { Fragment } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { getFilteredEvents } from "../../helpers/api-util";
 import { useRouter } from "next/router";
 import EventList from "../../components/events/event-list";
 import ResultsTitle from "../../components/events/results-title";
 import Button from "../../components/ui/button";
 import ErrorAlert from "../../components/ui/error-alert";
+import useSWR from "swr";
 
-const FilteredEventsPage = (props) => {
-  if (props.hasError) {
+const FilteredEventsPage = () => {
+  const [loadedEvents, setLoadedEvents] = useState();
+  const router = useRouter();
+
+  const lst = router.query.slug;
+
+  const fetcher = (...args) => fetch(...args).then((res) => res.json());
+
+  const { data, error } = useSWR(
+    "https://react-http-8b912-default-rtdb.asia-southeast1.firebasedatabase.app/events.json",
+    fetcher
+  );
+
+  useEffect(() => {
+    if (data) {
+      const events = [];
+
+      for (const key in data) {
+        events.push({
+          id: key,
+          ...data[key],
+        });
+      }
+
+      setLoadedEvents(events);
+    }
+  }, [data]);
+
+  if (!loadedEvents) {
+    return <p className="center">Loading...</p>;
+  }
+
+  let year = lst[0];
+  let month = lst[1];
+
+  const numYear = +year;
+  const numMonth = +month;
+
+  if (
+    isNaN(numMonth) ||
+    isNaN(numMonth) ||
+    numYear > 2030 ||
+    numYear < 2021 ||
+    numMonth < 1 ||
+    numMonth > 12 ||
+    error
+  ) {
     return (
       <Fragment>
         <ErrorAlert>
@@ -20,7 +66,18 @@ const FilteredEventsPage = (props) => {
     );
   }
 
-  const filteredEvents = props.filteredEvents;
+  const filteredEvents = loadedEvents.filter((event) => {
+    const eventDate = new Date(event.date);
+    return (
+      eventDate.getFullYear() === numYear &&
+      eventDate.getMonth() === numMonth - 1
+    );
+  });
+
+  const dateFilter = {
+    year: numYear,
+    month: numMonth,
+  };
 
   if (!filteredEvents || filteredEvents.length === 0) {
     return (
@@ -35,7 +92,7 @@ const FilteredEventsPage = (props) => {
     );
   }
 
-  const date = new Date(props.year, props.month - 1);
+  const date = new Date(numYear, numMonth - 1);
 
   return (
     <Fragment>
@@ -46,43 +103,3 @@ const FilteredEventsPage = (props) => {
 };
 
 export default FilteredEventsPage;
-
-export async function getServerSideProps(context) {
-  let year = context.params.slug[0];
-  let month = context.params.slug[1];
-
-  const numYear = +year;
-  const numMonth = +month;
-
-  if (
-    isNaN(numMonth) ||
-    isNaN(numMonth) ||
-    numYear > 2030 ||
-    numYear < 2021 ||
-    numMonth < 1 ||
-    numMonth > 12
-  ) {
-    return {
-      props: { hasError: true },
-      // notFound: true,
-      // redirect: {
-      //   destination: '/error' // but here we don't have an error page so we will display the default 404 page
-      // }
-    };
-  }
-
-  const dateFilter = {
-    year: numYear,
-    month: numMonth,
-  };
-
-  const filteredEvents = await getFilteredEvents(dateFilter);
-
-  return {
-    props: {
-      year: year,
-      month: month,
-      filteredEvents: filteredEvents,
-    },
-  };
-}
